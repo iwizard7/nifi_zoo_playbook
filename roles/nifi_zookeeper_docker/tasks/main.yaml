@@ -1,0 +1,78 @@
+---
+- name: Deploy NiFi and Zookeeper Cluster
+  hosts: all
+  become: yes
+  vars:
+    nifi_version: "1.20.0"  # Версия NiFi
+    zookeeper_version: "3.8.1"  # Версия Zookeeper
+
+    nifi_nodes:
+      - nifi1
+      - nifi2
+    zookeeper_nodes:
+      - zookeeper1
+      - zookeeper2
+      - zookeeper3
+
+    nifi_ssl_enabled: true
+    nifi_ldap_enabled: false
+    nifi_log_path: "/var/log/nifi"
+    nifi_content_repository_path: "/var/nifi/content_repository"
+
+  tasks:
+    - name: Determine OS type
+      set_fact:
+        os_type: "{{ ansible_os_family | lower }}"
+
+    - name: Install required packages for Ubuntu
+      when: os_type == "debian"
+      apt:
+        name:
+          - openjdk-11-jdk
+          - docker.io
+        state: present
+        update_cache: yes
+
+    - name: Install required packages for Oracle Linux
+      when: os_type == "redhat"
+      dnf:
+        name:
+          - java-11-openjdk
+          - docker
+        state: present
+
+    - name: Start Docker service
+      service:
+        name: docker
+        state: started
+        enabled: yes
+
+    - name: Deploy Zookeeper
+      when: inventory_hostname in zookeeper_nodes
+      docker_container:
+        name: "{{ inventory_hostname }}"
+        image: "zookeeper:{{ zookeeper_version }}"
+        state: started
+        restart_policy: always
+        published_ports:
+          - "2181:2181"
+        env:
+          ZOO_MY_ID: "{{ ansible_hostname[-1] }}"
+          ZOO_SERVERS: "server.1=zookeeper1:2888:3888 server.2=zookeeper2:2888:3888 server.3=zookeeper3:2888:3888"
+
+    - name: Deploy Apache NiFi
+      when: inventory_hostname in nifi_nodes
+      docker_container:
+        name: "{{ inventory_hostname }}"
+        image: "apache/nifi:{{ nifi_version }}"
+        state: started
+        restart_policy: always
+        published_ports:
+          - "8080:8080"
+        env:
+          NIFI_WEB_HTTP_PORT: "8080"
+          NIFI_ZK_CONNECT_STRING: "zookeeper1:2181,zookeeper2:2181,zookeeper3:2181"
+          NIFI_LOG_DIR: "{{ nifi_log_path }}"
+          NIFI_CONTENT_REPOSITORY: "{{ nifi_content_repository_path }}"
+          NIFI_SSL_ENABLED: "{{ nifi_ssl_enabled }}"
+          NIFI_LDAP_ENABLED: "{{ nifi_ldap_enabled }}"

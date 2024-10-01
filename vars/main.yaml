@@ -1,0 +1,16 @@
+---
+nifi_version: "1.20.0"
+zookeeper_version: "3.8.1"
+nifi_nodes:
+  - nifi1
+  - nifi2
+zookeeper_nodes:
+  - zookeeper1
+  - zookeeper2
+  - zookeeper3
+
+# Переменные для настройки
+nifi_ssl_enabled: true
+nifi_ldap_enabled: false
+nifi_log_path: "/var/log/nifi"
+nifi_content_repository_path: "/var/nifi/content_repository"
