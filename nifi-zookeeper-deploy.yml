@@ -1,0 +1,84 @@
+---
+- name: Deploy NiFi cluster
+  hosts: nifi_cluster
+  become: true
+
+  vars:
+    nifi_version: "1.15.3"
+    docker_network: "nifi-net"
+
+  tasks:
+  - name: Create Docker network
+    docker_network:
+      name: "{{ docker_network }}"
+      driver: bridge
+
+  - name: Pull NiFi image
+    docker_image:
+      name: "apache/nifi:{{ nifi_version }}"
+      source: pull
+
+  - name: Create NiFi container
+    docker_container:
+      name: nifi
+      image: "apache/nifi:{{ nifi_version }}"
+      ports:
+        - "8080:8080"
+      networks:
+        - "{{ docker_network }}"
+      restart: always
+
+  - name: Configure NiFi
+    template:
+      src: templates/nifi.properties.j2
+      dest: /opt/nifi/nifi.properties
+      mode: '0644'
+    notify: restart nifi
+
+  handlers:
+  - name: restart nifi
+    docker_container:
+      name: nifi
+      restarted: yes
+
+- name: Deploy ZooKeeper cluster
+  hosts: zookeeper_cluster
+  become: true
+
+  vars:
+    zookeeper_version: "3.7.1"
+    docker_network: "nifi-net"
+
+  tasks:
+  - name: Create Docker network
+    docker_network:
+      name: "{{ docker_network }}"
+      driver: bridge
+
+  - name: Pull ZooKeeper image
+    docker_image:
+      name: "apache/zookeeper:{{ zookeeper_version }}"
+      source: pull
+
+  - name: Create ZooKeeper container
+    docker_container:
+      name: zookeeper
+      image: "apache/zookeeper:{{ zookeeper_version }}"
+      ports:
+        - "2181:2181"
+      networks:
+        - "{{ docker_network }}"
+      restart: always
+
+  - name: Configure ZooKeeper
+    template:
+      src: templates/zoo.cfg.j2
+      dest: /opt/zookeeper/conf/zoo.cfg
+      mode: '0644'
+    notify: restart zookeeper
+
+  handlers:
+  - name: restart zookeeper
+    docker_container:
+      name: zookeeper
+      restarted: yes

@@ -1,0 +1,8 @@
+tickTime=2000
+initLimit=10
+syncLimit=5
+dataDir=/opt/zookeeper/data
+clientPort=2181
+server.1={{ groups['zookeeper_cluster'][0] }}:2888:3888
+server.2={{ groups['zookeeper_cluster'][1] }}:2888:3888
+server.3={{ groups['zookeeper_cluster'][2] }}:2888:3888

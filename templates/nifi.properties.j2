@@ -1,4 +1,5 @@
-nifi.web.http.port={{ 8080 }}
-nifi.web.https.port={{ 8443 }}
-nifi.lpad.enabled={{ lpda_enabled | bool }}
-nifi.ssl.enabled={{ ssl_enabled | bool }}
+nifi.web.http.port=8080
+nifi.web.https.port=8443
+nifi.cluster.is.cluster=true
+nifi.cluster.node.address={{ ansible_host }}
+nifi.cluster.node.protocol=http

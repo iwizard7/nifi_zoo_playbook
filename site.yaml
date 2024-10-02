@@ -15,12 +15,14 @@
     package:
       name: docker
       state: present
+    when: "ansible_distribution == 'OracleLinux' or ansible_distribution == 'Ubuntu'"
 
   - name: Start Docker
     service:
       name: docker
       state: started
       enabled: yes
+    when: "ansible_distribution == 'OracleLinux' or ansible_distribution == 'Ubuntu'"
 
   - name: Pull NiFi Docker image
     docker_image:
@@ -63,6 +65,7 @@
     package:
       name: python3.10
       state: present
+    when: "ansible_distribution == 'OracleLinux' or ansible_distribution == 'Ubuntu'"
 
   - name: Configure NiFi cluster
     template:

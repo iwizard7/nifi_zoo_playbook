@@ -1,0 +1,8 @@
+[nifi_cluster]
+vm1 ansible_host=10.211.55.19
+vm2 ansible_host=192.168.1.15
+
+[zookeeper_cluster]
+vm3 ansible_host=10.211.55.28
+vm4 ansible_host=192.168.1.13
+vm5 ansible_host=192.168.1.14
