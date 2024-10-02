@@ -1,6 +1,6 @@
 ---
 - name: Deploy NiFi and ZooKeeper clusters
-  hosts: all
+  hosts: nifi_cluster,zookeeper_cluster
   become: true
 
   vars:
@@ -26,11 +26,13 @@
     docker_image:
       name: apache/nifi:{{ nifi_version }}
       source: pull
+    when: "'nifi_cluster' in group_names"
 
   - name: Pull ZooKeeper Docker image
     docker_image:
       name: zookeeper:{{ zookeeper_version }}
       source: pull
+    when: "'zookeeper_cluster' in group_names"
 
   - name: Create NiFi containers
     docker_container:
@@ -45,6 +47,7 @@
         NIFI_WEB_HTTPS_PORT: 8443
         NIFI_LPAD_ENABLED: "{{ lpda_enabled | bool }}"
         NIFI_SSL_ENABLED: "{{ ssl_enabled | bool }}"
+    when: "'nifi_cluster' in group_names"
 
   - name: Create ZooKeeper containers
     docker_container:
@@ -54,6 +57,7 @@
         - "2181:2181"
       volumes:
         - /opt/zookeeper/conf:/opt/zookeeper/conf
+    when: "'zookeeper_cluster' in group_names"
 
   - name: Install Python 3.10
     package:
@@ -66,6 +70,7 @@
       dest: /opt/nifi/conf/nifi.properties
       mode: '0644'
     notify: restart nifi
+    when: "'nifi_cluster' in group_names"
 
   - name: Configure ZooKeeper cluster
     template:
@@ -73,14 +78,17 @@
       dest: /opt/zookeeper/conf/zookeeper.properties
       mode: '0644'
     notify: restart zookeeper
+    when: "'zookeeper_cluster' in group_names"
 
   handlers:
   - name: restart nifi
     docker_container:
       name: nifi-{{ inventory_hostname }}
       state: restarted
+    when: "'nifi_cluster' in group_names"
 
   - name: restart zookeeper
     docker_container:
       name: zookeeper-{{ inventory_hostname }}
       state: restarted
+    when: "'zookeeper_cluster' in group_names"
