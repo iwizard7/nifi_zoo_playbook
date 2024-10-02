@@ -1,78 +1,86 @@
 ---
-- name: Deploy NiFi and Zookeeper Cluster
+- name: Deploy NiFi and ZooKeeper clusters
   hosts: all
-  become: yes
+  become: true
+
   vars:
-    nifi_version: "1.20.0"  # Версия NiFi
-    zookeeper_version: "3.8.1"  # Версия Zookeeper
-
-    nifi_nodes:
-      - nifi1
-      - nifi2
-    zookeeper_nodes:
-      - zookeeper1
-      - zookeeper2
-      - zookeeper3
-
-    nifi_ssl_enabled: true
-    nifi_ldap_enabled: false
-    nifi_log_path: "/var/log/nifi"
-    nifi_content_repository_path: "/var/nifi/content_repository"
+    nifi_version: "1.15.3"  # default NiFi version
+    zookeeper_version: "3.7.1"  # default ZooKeeper version
+    lpda_enabled: false  # default LPAD enabled
+    ssl_enabled: false  # default SSL enabled
+    python_version: "3.10"  # default Python version
 
   tasks:
-    - name: Determine OS type
-      set_fact:
-        os_type: "{{ ansible_os_family | lower }}"
+  - name: Install Docker
+    package:
+      name: docker
+      state: present
 
-    - name: Install required packages for Ubuntu
-      when: os_type == "debian"
-      apt:
-        name:
-          - openjdk-11-jdk
-          - docker.io
-        state: present
-        update_cache: yes
+  - name: Start Docker
+    service:
+      name: docker
+      state: started
+      enabled: yes
 
-    - name: Install required packages for Oracle Linux
-      when: os_type == "redhat"
-      dnf:
-        name:
-          - java-11-openjdk
-          - docker
-        state: present
+  - name: Pull NiFi Docker image
+    docker_image:
+      name: apache/nifi:{{ nifi_version }}
+      source: pull
 
-    - name: Start Docker service
-      service:
-        name: docker
-        state: started
-        enabled: yes
+  - name: Pull ZooKeeper Docker image
+    docker_image:
+      name: zookeeper:{{ zookeeper_version }}
+      source: pull
 
-    - name: Deploy Zookeeper
-      when: inventory_hostname in zookeeper_nodes
-      docker_container:
-        name: "{{ inventory_hostname }}"
-        image: "zookeeper:{{ zookeeper_version }}"
-        state: started
-        restart_policy: always
-        published_ports:
-          - "2181:2181"
-        env:
-          ZOO_MY_ID: "{{ ansible_hostname[-1] }}"
-          ZOO_SERVERS: "server.1=zookeeper1:2888:3888 server.2=zookeeper2:2888:3888 server.3=zookeeper3:2888:3888"
+  - name: Create NiFi containers
+    docker_container:
+      name: nifi-{{ inventory_hostname }}
+      image: apache/nifi:{{ nifi_version }}
+      ports:
+        - "8080:8080"
+      volumes:
+        - /opt/nifi/conf:/opt/nifi/conf
+      environment:
+        NIFI_WEB_HTTP_PORT: 8080
+        NIFI_WEB_HTTPS_PORT: 8443
+        NIFI_LPAD_ENABLED: "{{ lpda_enabled | bool }}"
+        NIFI_SSL_ENABLED: "{{ ssl_enabled | bool }}"
 
-    - name: Deploy Apache NiFi
-      when: inventory_hostname in nifi_nodes
-      docker_container:
-        name: "{{ inventory_hostname }}"
-        image: "apache/nifi:{{ nifi_version }}"
-        state: started
-        restart_policy: always
-        published_ports:
-          - "8080:8080"
-        env:
-          NIFI_WEB_HTTP_PORT: "8080"
-          NIFI_ZK_CONNECT_STRING: "zookeeper1:2181,zookeeper2:2181,zookeeper3:2181"
-          NIFI_LOG_DIR: "{{ nifi_log_path }}"
-          NIFI_CONTENT_REPOSITORY: "{{ nifi_content_repository_path }}"
-          NIFI_SSL_ENABLED: "{{ nifi_ssl_enabled }}"
-          NIFI_LDAP_ENABLED: "{{ nifi_ldap_enabled }}"
+  - name: Create ZooKeeper containers
+    docker_container:
+      name: zookeeper-{{ inventory_hostname }}
+      image: zookeeper:{{ zookeeper_version }}
+      ports:
+        - "2181:2181"
+      volumes:
+        - /opt/zookeeper/conf:/opt/zookeeper/conf
+
+  - name: Install Python 3.10
+    package:
+      name: python3.10
+      state: present
+
+  - name: Configure NiFi cluster
+    template:
+      src: templates/nifi.properties.j2
+      dest: /opt/nifi/conf/nifi.properties
+      mode: '0644'
+    notify: restart nifi
+
+  - name: Configure ZooKeeper cluster
+    template:
+      src: templates/zookeeper.properties.j2
+      dest: /opt/zookeeper/conf/zookeeper.properties
+      mode: '0644'
+    notify: restart zookeeper
+
+  handlers:
+  - name: restart nifi
+    docker_container:
+      name: nifi-{{ inventory_hostname }}
+      state: restarted
+
+  - name: restart zookeeper
+    docker_container:
+      name: zookeeper-{{ inventory_hostname }}
+      state: restarted
