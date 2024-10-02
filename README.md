@@ -30,4 +30,4 @@ Playbook состоит из следующих задач:
 
 **Запуск**
 
-`ansible-playbook -i inventory.ini site.yml`
+`ansible-playbook -i inventory.ini site.yaml --ask-pas -K`
