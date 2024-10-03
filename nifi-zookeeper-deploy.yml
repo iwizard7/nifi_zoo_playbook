@@ -1,84 +1,86 @@
 ---
-- name: Deploy NiFi cluster
-  hosts: nifi_cluster
-  become: true
-
+- name: Deploy NiFi and Zookeeper Clusters
+  hosts: all
+  become: yes
   vars:
-    nifi_version: "1.15.3"
-    docker_network: "nifi-net"
+    nifi_version: "1.20.0"  # Версия NiFi по умолчанию
+    zookeeper_version: "3.8.1"  # Версия Zookeeper по умолчанию
+
+    nifi_ssl_enabled: true
+    nifi_ldap_enabled: false
+    nifi_log_path: "/var/log/nifi"
+    nifi_content_repository_path: "/var/nifi"
 
   tasks:
-  - name: Create Docker network
-    docker_network:
-      name: "{{ docker_network }}"
-      driver: bridge
+    - name: Determine OS type
+      set_fact:
+        os_type: "{{ ansible_os_family | lower }}"
 
-  - name: Pull NiFi image
-    docker_image:
-      name: "apache/nifi:{{ nifi_version }}"
-      source: pull
+    - name: Install required packages for Ubuntu
+      when: os_type == "debian"
+      apt:
+        name:
+          - openjdk-11-jdk
+          - docker.io
+        state: present
+        update_cache: yes
 
-  - name: Create NiFi container
-    docker_container:
-      name: nifi
-      image: "apache/nifi:{{ nifi_version }}"
-      ports:
-        - "8080:8080"
-      networks:
-        - "{{ docker_network }}"
-      restart: always
+    - name: Install required packages for Oracle Linux
+      when: os_type == "redhat"
+      dnf:
+        name:
+          - java-11-openjdk
+          - docker
+        state: present
 
-  - name: Configure NiFi
-    template:
-      src: templates/nifi.properties.j2
-      dest: /opt/nifi/nifi.properties
-      mode: '0644'
-    notify: restart nifi
+    - name: Start Docker service
+      service:
+        name: docker
+        state: started
+        enabled: yes
 
-  handlers:
-  - name: restart nifi
-    docker_container:
-      name: nifi
-      restarted: yes
+    - name: Stop existing Zookeeper containers
+      when: inventory_hostname in groups['zookeeper_cluster']
+      docker_container:
+        name: "{{ inventory_hostname }}"
+        state: absent
 
-- name: Deploy ZooKeeper cluster
-  hosts: zookeeper_cluster
-  become: true
+    - name: Stop existing NiFi containers
+      when: inventory_hostname in groups['nifi_cluster']
+      docker_container:
+        name: "{{ inventory_hostname }}"
+        state: absent
 
-  vars:
-    zookeeper_version: "3.7.1"
-    docker_network: "nifi-net"
+    - name: Create Zookeeper connection string
+      set_fact:
+        zookeeper_connection_string: "{{ groups['zookeeper_cluster'] | map('regex_replace', '^(.*)$', '\\1:2181') | join(',') }}"
 
-  tasks:
-  - name: Create Docker network
-    docker_network:
-      name: "{{ docker_network }}"
-      driver: bridge
+    - name: Deploy Zookeeper
+      when: inventory_hostname in groups['zookeeper_cluster']
+      docker_container:
+        name: "{{ inventory_hostname }}"
+        image: "zookeeper:{{ zookeeper_version }}"
+        state: started
+        restart_policy: always
+        published_ports:
+          - "2181:2181"
+        env:
+          ZOO_MY_ID: "{{ ansible_hostname[-1] }}"
+          ZOO_SERVERS: "{{ zookeeper_connection_string | regex_replace('^', 'server.1=') | regex_replace('server.1=', 'server.1=') }}"
 
-  - name: Pull ZooKeeper image
-    docker_image:
-      name: "apache/zookeeper:{{ zookeeper_version }}"
-      source: pull
-
-  - name: Create ZooKeeper container
-    docker_container:
-      name: zookeeper
-      image: "apache/zookeeper:{{ zookeeper_version }}"
-      ports:
-        - "2181:2181"
-      networks:
-        - "{{ docker_network }}"
-      restart: always
-
-  - name: Configure ZooKeeper
-    template:
-      src: templates/zoo.cfg.j2
-      dest: /opt/zookeeper/conf/zoo.cfg
-      mode: '0644'
-    notify: restart zookeeper
-
-  handlers:
-  - name: restart zookeeper
-    docker_container:
-      name: zookeeper
-      restarted: yes
+    - name: Deploy Apache NiFi
+      when: inventory_hostname in groups['nifi_cluster']
+      docker_container:
+        name: "{{ inventory_hostname }}"
+        image: "apache/nifi:{{ nifi_version }}"
+        state: started
+        restart_policy: always
+        published_ports:
+          - "8080:8080"
+        env:
+          NIFI_WEB_HTTP_PORT: "8080"
+          NIFI_ZK_CONNECT_STRING: "{{ zookeeper_connection_string }}"
+          NIFI_LOG_DIR: "{{ nifi_log_path }}"
+          NIFI_CONTENT_REPOSITORY: "{{ nifi_content_repository_path }}"
+          NIFI_SSL_ENABLED: "false"
+          NIFI_LDAP_ENABLED: "false"
