@@ -1,5 +1,0 @@
-nifi.web.http.port=8080
-nifi.cluster.is.cluster=true
-nifi.cluster.node.address={{ ansible_host }}
-nifi.cluster.node.protocol=http
-nifi.zookeeper.connect.string={{ groups['zookeeper_cluster'] | join(',') }}:2181
